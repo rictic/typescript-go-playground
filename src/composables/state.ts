@@ -1,4 +1,4 @@
-import { refDebounced, useFetch } from '@vueuse/core'
+import { refDebounced } from '@vueuse/core'
 import { computed, ref, watchEffect } from 'vue'
 import { useSourceFile, type SourceFileMap } from './source-file'
 import { atou, utoa } from './url'
@@ -34,34 +34,15 @@ export const activeFile = ref<string>('main.ts')
 export const outputFiles = ref<Record<string, string | null>>({})
 export const outputActive = ref<string | undefined>('main.jsx')
 
-export const currentVersion = ref('latest')
-export const { data: currentManifest, isFetching: isFetchingManifest } =
-  useFetch(
-    () => `https://registry.npmjs.org/tsgo-wasm/${currentVersion.value}`,
-    {
-      immediate: true,
-      refetch: true,
-      beforeFetch(ctx) {
-        ctx.options.cache =
-          currentVersion.value === 'latest' ? 'no-store' : 'force-cache'
-        return ctx
-      },
-    },
-  ).json<Record<string, any>>()
-
 export const compiling = ref(false)
 export const timeCost = ref(0)
 export const loadingWasm = ref(false)
 export const firstWasmLoaded = ref(false)
 
 export const loading = computed(
-  () => isFetchingManifest.value || loadingWasm.value || !firstWasmLoaded.value,
+  () => loadingWasm.value || !firstWasmLoaded.value,
 )
 export const loadingDebounced = refDebounced(loading, 100)
-
-export const compilerSha = computed(
-  () => currentManifest.value?.buildInfo.commit as string,
-)
 
 export function filesToObject() {
   return Array.from(files.value.values()).map((file) => [
@@ -90,7 +71,6 @@ if (state) {
       files.value = new Map(defaultFiles())
     }
     activeFile.value = files.value.keys().next().value!
-    currentVersion.value = state.v || 'latest'
   } catch {}
 }
 
@@ -98,7 +78,6 @@ export const serialized = computed(() =>
   JSON.stringify({
     f: filesToObject(),
     c: cmd.value,
-    v: currentVersion.value,
   }),
 )
 

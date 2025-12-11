@@ -2,7 +2,6 @@
 import { useClipboard, watchDebounced } from '@vueuse/core'
 import AnsiRegex from 'ansi-regex'
 import { createBirpc } from 'birpc'
-import { watch } from 'vue'
 import CodeEditor from './components/CodeEditor.vue'
 import NavBar from './components/NavBar.vue'
 import PageFooter from './components/PageFooter.vue'
@@ -13,14 +12,10 @@ import { useSourceFile } from './composables/source-file'
 import {
   activeFile,
   cmd,
-  compilerSha,
   compiling,
-  currentManifest,
-  currentVersion,
   files,
   filesToObject,
   firstWasmLoaded,
-  isFetchingManifest,
   loadingDebounced,
   loadingWasm,
   outputActive,
@@ -29,12 +24,10 @@ import {
   tabs,
   timeCost,
 } from './composables/state'
-import { generateDates } from './composables/version'
 import Worker from './worker?worker'
 import type { WorkerFunctions } from './worker'
 
 const ansiRegex = AnsiRegex()
-const dates = generateDates()
 
 const worker = new Worker()
 const rpc = createBirpc<WorkerFunctions>(
@@ -50,19 +43,12 @@ watchDebounced([files, cmd], () => compile(), {
   deep: true,
   immediate: true,
 })
-watch(isFetchingManifest, () => compile())
 
 async function compile() {
-  if (
-    loadingWasm.value ||
-    compiling.value ||
-    !currentManifest.value ||
-    isFetchingManifest.value
-  )
-    return
+  if (loadingWasm.value || compiling.value) return
 
   loadingWasm.value = true
-  await rpc.init(currentManifest.value)
+  await rpc.init()
   loadingWasm.value = false
   firstWasmLoaded.value = true
 
@@ -71,7 +57,6 @@ async function compile() {
   const result = await rpc.compile(
     cmd.value,
     Object.fromEntries(filesToObject()),
-    currentManifest.value,
   )
   compiling.value = false
 
@@ -154,28 +139,7 @@ function updateCode(name: string, code: string) {
         Playground
       </h1>
       <div v-if="loadingDebounced" self-end text-sm op70>
-        Loading
-        <a :href="currentManifest?.dist.tarball || ''">WASM</a>...
-      </div>
-      <div self-end text-xs font-mono op70>
-        compiler
-        <a
-          v-if="compilerSha"
-          :href="`https://github.com/microsoft/typescript-go/commit/${compilerSha}`"
-          target="_blank"
-          rel="noopener"
-          mr1
-          hover:underline
-        >
-          @{{ compilerSha.slice(0, 7) }}
-        </a>
-
-        <select v-model="currentVersion">
-          <option value="latest">Latest</option>
-          <option v-for="date of dates" :key="date" :value="date">
-            {{ date }}
-          </option>
-        </select>
+        Loading WASM...
       </div>
     </div>
 

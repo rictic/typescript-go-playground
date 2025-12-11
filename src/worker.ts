@@ -1,12 +1,11 @@
 import { WasmFs } from '@wasmer/wasmfs'
 import { tokenizeArgs } from 'args-tokenizer'
 import { createBirpc } from 'birpc'
-import { createGzipDecoder, unpackTar } from 'modern-tar'
 // @ts-expect-error
 import { Go } from './wasm-exec.js'
 
 const go = new Go()
-const cache: Record<string, WebAssembly.Module> = {}
+let wasmModule: WebAssembly.Module | undefined
 
 const workerFunctions = {
   init,
@@ -25,39 +24,31 @@ export interface CompileResult {
 
 const PATH_STDERR = '/dev/stderr'
 
-async function init(manifest: Record<string, any>) {
-  await loadWasm(manifest)
+async function init() {
+  await loadWasm()
 }
 
-async function loadWasm(manifest: Record<string, any>) {
-  const version = manifest.version
-  let wasmMod: WebAssembly.Module | undefined = cache[version]
-  if (!wasmMod) {
-    const response = await fetch(manifest.dist.tarball, {
-      cache: 'force-cache',
-    })
-    if (!response.body) throw new Error('No response body')
+async function loadWasm() {
+  if (wasmModule) return wasmModule
 
-    const tarStream = response.body.pipeThrough(createGzipDecoder())
-    const [wasmFile] = await unpackTar(tarStream, {
-      strip: 1,
-      filter: (header) => header.name === 'tsgo.wasm',
-    })
-    if (!wasmFile) {
-      throw new Error('No wasm file found in the package')
-    }
-    wasmMod = await WebAssembly.compile(wasmFile.data!.buffer as any)
-    cache[version] = wasmMod
-  }
-  return wasmMod
+  console.log('[worker] Loading tsgo.wasm')
+  const response = await fetch('/tsgo.wasm', {
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new Error('Failed to load tsgo.wasm')
+  const wasmBuffer = await response.arrayBuffer()
+  console.log(
+    `[worker] Loaded WASM: ${(wasmBuffer.byteLength / 1024 / 1024).toFixed(1)}MB`,
+  )
+  wasmModule = await WebAssembly.compile(wasmBuffer)
+  return wasmModule
 }
 
 async function compile(
   cmd: string,
   files: Record<string, string>,
-  manifest: Record<string, any>,
 ): Promise<CompileResult> {
-  const wasmMod = await loadWasm(manifest)
+  const wasmMod = await loadWasm()
 
   const wasmFs = new WasmFs()
   // @ts-expect-error

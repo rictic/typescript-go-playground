@@ -26,12 +26,15 @@
             # pnpm package manager
             nodePackages.pnpm
 
+            # Go toolchain for building typescript-go WASM
+            go_1_24
           ];
 
           shellHook = ''
             echo "TypeScript Go Playground dev shell"
             echo "Node.js: $(node --version)"
             echo "pnpm: $(pnpm --version)"
+            echo "Go: $(go version)"
           '';
         };
       }
