@@ -5,6 +5,7 @@ The key insight is that typescript-go's watch mode uses **polling + mtime compar
 ### Steps
 
 1. **Fork typescript-go** — Fork typescript-go into this repo. Get it building with nix, and loading in the existing system.
+  - Done! Run `./scripts/build-wasm.sh` to build `/public/tsgo.wasm` from the fork of typescript-go at `./typescript-go`.
 
 2. **Modify our fork** to add a `//go:build js && wasm` variant that initializes the compiler once, then exposes a `tsgoCompile(files)` function via `syscall/js.FuncOf()`. Use `select {}` to keep the runtime alive instead of exiting after `main()`.
 
