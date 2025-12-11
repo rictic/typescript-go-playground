@@ -31,7 +31,7 @@ function reset() {
 
     <a
       nav-button
-      href="https://github.com/sxzz/typescript-go-playground"
+      href="https://github.com/rictic/typescript-go-playground"
       target="_blank"
       rel="noopener"
     >
@@ -42,7 +42,7 @@ function reset() {
       href="https://github.com/sponsors/sxzz"
       target="_blank"
       flex="~ center"
-      title="Sponsor"
+      title="Sponsor Kevin"
       rel="noopener"
       group
       nav-button
