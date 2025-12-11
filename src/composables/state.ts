@@ -3,30 +3,9 @@ import { computed, ref, watchEffect } from 'vue'
 import { useSourceFile, type SourceFileMap } from './source-file'
 import { atou, utoa } from './url'
 
-const DEFAULT_TSCONFIG = {
-  compilerOptions: {
-    target: 'esnext',
-    module: 'esnext',
-    strict: true,
-    esModuleInterop: true,
-    outDir: 'dist',
-    declaration: true,
-    resolveJsonModule: true,
-  },
-}
 export const defaultFiles = (): SourceFileMap =>
-  new Map([
-    ['main.ts', useSourceFile('main.ts', `const x: number = 1`)],
-    [
-      'tsconfig.json',
-      useSourceFile(
-        'tsconfig.json',
-        JSON.stringify(DEFAULT_TSCONFIG, undefined, 2),
-      ),
-    ],
-  ])
+  new Map([['main.ts', useSourceFile('main.ts', `const x: number = 1`)]])
 
-export const cmd = ref('')
 export const files = ref<SourceFileMap>(defaultFiles())
 export const tabs = computed(() => Array.from(files.value.keys()))
 export const activeFile = ref<string>('main.ts')
@@ -60,7 +39,6 @@ if (!state) {
 }
 if (state) {
   try {
-    cmd.value = state.c || ''
     files.value = new Map(
       ((state?.f || []) as [string, string][]).map(([filename, code]) => [
         filename,
@@ -77,7 +55,6 @@ if (state) {
 export const serialized = computed(() =>
   JSON.stringify({
     f: filesToObject(),
-    c: cmd.value,
   }),
 )
 

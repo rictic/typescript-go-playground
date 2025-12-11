@@ -12,7 +12,6 @@ import { shiki, themeDark, themeLight } from './composables/shiki'
 import { useSourceFile } from './composables/source-file'
 import {
   activeFile,
-  cmd,
   compiling,
   files,
   filesToObject,
@@ -43,14 +42,18 @@ let pendingCompile = false
 const showCompilingUI = ref(false)
 let compilingTimeout: ReturnType<typeof setTimeout> | null = null
 
-watch([files, cmd], () => {
-  if (compiling.value) {
-    // Already compiling, mark that we need to recompile when done
-    pendingCompile = true
-  } else {
-    compile()
-  }
-}, { deep: true, immediate: true })
+watch(
+  files,
+  () => {
+    if (compiling.value) {
+      // Already compiling, mark that we need to recompile when done
+      pendingCompile = true
+    } else {
+      compile()
+    }
+  },
+  { deep: true, immediate: true },
+)
 
 async function compile() {
   if (loadingWasm.value) return
@@ -62,7 +65,7 @@ async function compile() {
 
   compiling.value = true
   pendingCompile = false
-  
+
   // Only show compiling UI after 300ms
   compilingTimeout = setTimeout(() => {
     if (compiling.value) {
@@ -70,11 +73,8 @@ async function compile() {
     }
   }, 300)
 
-  const result = await rpc.compile(
-    cmd.value,
-    Object.fromEntries(filesToObject()),
-  )
-  
+  const result = await rpc.compile('', Object.fromEntries(filesToObject()))
+
   compiling.value = false
   showCompilingUI.value = false
   if (compilingTimeout) {
@@ -161,9 +161,7 @@ function updateCode(name: string, code: string) {
         >
         Playground
       </h1>
-      <div v-if="loadingDebounced" self-end text-sm op70>
-        Loading WASM...
-      </div>
+      <div v-if="loadingDebounced" self-end text-sm op70>Loading WASM...</div>
     </div>
 
     <div
@@ -207,18 +205,6 @@ function updateCode(name: string, code: string) {
             </div>
           </template>
         </Tabs>
-        <div flex items-center gap2 text-sm font-mono>
-          <span>❯ tsgo</span>
-          <input
-            v-model="cmd"
-            type="text"
-            placeholder="command, e.g -v"
-            flex-1
-            border
-            rounded
-            p1
-          />
-        </div>
       </div>
 
       <div flex="~ col" h-full min-w-0 w-full flex-1 items-center gap2>

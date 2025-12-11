@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import * as monaco from 'monaco-editor'
 import { dark } from '../composables/dark'
-import { cmd, defaultFiles, files } from '../composables/state'
+import { defaultFiles, files } from '../composables/state'
 
 function reset() {
   if (
     // eslint-disable-next-line no-alert
     globalThis.confirm(
-      'Are you sure you want to reset all files and commands to their default values?',
+      'Are you sure you want to reset all files to their default values?',
     )
   ) {
     monaco!.editor.getModels().forEach((model) => {
@@ -15,7 +15,6 @@ function reset() {
       model.dispose()
     })
     files.value = defaultFiles()
-    cmd.value = ''
   }
 }
 </script>
