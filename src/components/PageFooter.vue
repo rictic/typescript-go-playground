@@ -21,5 +21,6 @@
     >
       <div i-ri-github-fill text-lg
     /></a>
+    and modified by rictic to use a custom WASM build for speed.
   </div>
 </template>
