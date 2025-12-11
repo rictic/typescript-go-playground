@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { useClipboard, watchDebounced } from '@vueuse/core'
+import { useClipboard } from '@vueuse/core'
 import AnsiRegex from 'ansi-regex'
 import { createBirpc } from 'birpc'
+import { ref, watch } from 'vue'
 import CodeEditor from './components/CodeEditor.vue'
 import NavBar from './components/NavBar.vue'
 import PageFooter from './components/PageFooter.vue'
@@ -20,7 +21,6 @@ import {
   loadingWasm,
   outputActive,
   outputFiles,
-  serialized,
   tabs,
   timeCost,
 } from './composables/state'
@@ -38,33 +38,56 @@ const rpc = createBirpc<WorkerFunctions>(
   },
 )
 
-watchDebounced([files, cmd], () => compile(), {
-  debounce: 200,
-  deep: true,
-  immediate: true,
-})
+// Leading-edge compile: compile immediately, batch changes during compilation
+let pendingCompile = false
+const showCompilingUI = ref(false)
+let compilingTimeout: ReturnType<typeof setTimeout> | null = null
+
+watch([files, cmd], () => {
+  if (compiling.value) {
+    // Already compiling, mark that we need to recompile when done
+    pendingCompile = true
+  } else {
+    compile()
+  }
+}, { deep: true, immediate: true })
 
 async function compile() {
-  if (loadingWasm.value || compiling.value) return
+  if (loadingWasm.value) return
 
   loadingWasm.value = true
   await rpc.init()
   loadingWasm.value = false
   firstWasmLoaded.value = true
 
-  const current = serialized.value
   compiling.value = true
+  pendingCompile = false
+  
+  // Only show compiling UI after 300ms
+  compilingTimeout = setTimeout(() => {
+    if (compiling.value) {
+      showCompilingUI.value = true
+    }
+  }, 300)
+
   const result = await rpc.compile(
     cmd.value,
     Object.fromEntries(filesToObject()),
   )
+  
   compiling.value = false
+  showCompilingUI.value = false
+  if (compilingTimeout) {
+    clearTimeout(compilingTimeout)
+    compilingTimeout = null
+  }
 
   outputFiles.value = result.output
   timeCost.value = result.time
   outputActive.value = Object.keys(result.output)[0]
 
-  if (current !== serialized.value) {
+  // If changes came in during compilation, recompile
+  if (pendingCompile) {
     compile()
   }
 }
@@ -200,7 +223,7 @@ function updateCode(name: string, code: string) {
 
       <div flex="~ col" h-full min-w-0 w-full flex-1 items-center gap2>
         <div
-          v-if="compiling"
+          v-if="showCompilingUI"
           flex="~ col"
           h-full
           w-full
@@ -257,7 +280,7 @@ function updateCode(name: string, code: string) {
           </div>
         </Tabs>
 
-        <div v-if="timeCost && !compiling" self-end op70>
+        <div v-if="timeCost && !showCompilingUI" self-end op70>
           {{ Math.round(timeCost) }} ms
         </div>
       </div>
