@@ -1,4 +1,3 @@
-import { tokenizeArgs } from 'args-tokenizer'
 import { createBirpc } from 'birpc'
 // @ts-expect-error
 import { Go } from './wasm-exec.js'
@@ -214,10 +213,14 @@ let wasmInstance: WebAssembly.Instance | undefined
 let wasmInitialized = false
 let initPromise: Promise<void> | undefined
 
-// Extend globalThis to include tsgoCompile and tsgoReady
+// Extend globalThis to include tsgoCompile, tsgoTranspile and tsgoReady
 declare global {
   // eslint-disable-next-line no-var
   var tsgoCompile: ((input: TsgoCompileInput) => TsgoCompileResult) | undefined
+  // eslint-disable-next-line no-var
+  var tsgoTranspile:
+    | ((input: TsgoTranspileInput) => TsgoTranspileResult)
+    | undefined
   // eslint-disable-next-line no-var
   var tsgoReady: boolean | undefined
 }
@@ -233,9 +236,30 @@ interface TsgoCompileResult {
   files: Record<string, string>
 }
 
+interface TsgoTranspileInput {
+  code: string
+  fileName?: string
+  compilerOptions?: {
+    target?: string
+    module?: string
+    jsx?: string
+    sourceMap?: boolean
+    inlineSourceMap?: boolean
+    inlineSources?: boolean
+    removeComments?: boolean
+  }
+}
+
+interface TsgoTranspileResult {
+  outputText: string
+  sourceMapText?: string
+  error?: string
+}
+
 const workerFunctions = {
   init,
   compile,
+  transpile,
 }
 export type WorkerFunctions = typeof workerFunctions
 createBirpc<{}, WorkerFunctions>(workerFunctions, {
@@ -245,6 +269,13 @@ createBirpc<{}, WorkerFunctions>(workerFunctions, {
 
 export interface CompileResult {
   output: Record<string, string | null>
+  time: number
+}
+
+export interface TranspileResult {
+  outputText: string
+  sourceMapText?: string
+  error?: string
   time: number
 }
 
@@ -317,56 +348,111 @@ async function compile(
 ): Promise<CompileResult> {
   await initWasm()
 
-  if (!globalThis.tsgoCompile) {
-    throw new Error('tsgoCompile not available - WASM not properly initialized')
+  if (!globalThis.tsgoTranspile) {
+    throw new Error(
+      'tsgoTranspile not available - WASM not properly initialized',
+    )
   }
 
-  const args = tokenizeArgs(cmd)
   const t = performance.now()
 
-  console.log('[worker] Calling tsgoCompile with args:', args)
-  console.log('[worker] Input files:', Object.keys(files))
+  // Use fast transpile mode for each TypeScript file
+  // This skips type checking entirely for maximum speed
+  const output: Record<string, string | null> = {}
 
-  // Call the persistent tsgoCompile function
-  const result = globalThis.tsgoCompile({
-    files,
-    args,
-  })
+  for (const [fileName, code] of Object.entries(files)) {
+    // Only transpile TypeScript files
+    if (
+      !fileName.endsWith('.ts') &&
+      !fileName.endsWith('.tsx') &&
+      !fileName.endsWith('.mts') &&
+      !fileName.endsWith('.cts')
+    ) {
+      continue
+    }
 
-  console.log('[worker] tsgoCompile result:', {
-    exitCode: result.exitCode,
-    stdout: result.stdout?.substring(0, 500),
-    filesKeys: Object.keys(result.files),
+    console.log(`[worker] Transpiling ${fileName} (fast mode, no type checking)`)
+
+    const result = globalThis.tsgoTranspile({
+      code,
+      fileName,
+      compilerOptions: {
+        target: 'ESNext',
+        module: 'ESNext',
+        // Parse jsx from command if present
+        jsx: cmd.includes('react') ? 'react-jsx' : undefined,
+      },
+    })
+
+    // Determine output filename
+    let outFileName = fileName
+      .replace(/\.tsx$/, '.js')
+      .replace(/\.ts$/, '.js')
+      .replace(/\.mts$/, '.mjs')
+      .replace(/\.cts$/, '.cjs')
+
+    if (result.error) {
+      output[`<error:${fileName}>`] = result.error
+    } else {
+      output[outFileName] = result.outputText
+      if (result.sourceMapText) {
+        output[outFileName + '.map'] = result.sourceMapText
+      }
+    }
+  }
+
+  const time = performance.now() - t
+  console.log(`[worker] Transpiled ${Object.keys(files).length} files in ${time.toFixed(1)}ms`)
+
+  return {
+    output,
+    time,
+  }
+}
+
+/**
+ * Fast transpile-only mode: parse + emit, no type checking.
+ * This is significantly faster for playground environments where
+ * you just want to see the JS output without full type checking.
+ */
+async function transpile(
+  code: string,
+  options?: TsgoTranspileInput['compilerOptions'],
+): Promise<TranspileResult> {
+  await initWasm()
+
+  if (!globalThis.tsgoTranspile) {
+    throw new Error(
+      'tsgoTranspile not available - WASM not properly initialized',
+    )
+  }
+
+  const t = performance.now()
+
+  console.log(
+    '[worker] Calling tsgoTranspile (fast mode, no type checking)',
+    options,
+  )
+
+  // Call the fast transpile function
+  const result = globalThis.tsgoTranspile({
+    code,
+    compilerOptions: options,
   })
 
   const time = performance.now() - t
 
-  // Build output object from emitted files, normalizing paths
-  // Go returns absolute paths like /app/dist/main.js, we want relative paths like main.js
-  const output: Record<string, string | null> = {}
-  for (const [path, content] of Object.entries(result.files)) {
-    // Strip /app/dist/ or /app/ prefix to get relative path
-    let relativePath = path
-    if (relativePath.startsWith('/app/dist/')) {
-      relativePath = relativePath.slice('/app/dist/'.length)
-    } else if (relativePath.startsWith('/app/')) {
-      relativePath = relativePath.slice('/app/'.length)
-    }
-    output[relativePath] = content
-  }
-
-  // Add stdout if present
-  if (result.stdout) {
-    output['<stdout>'] = result.stdout
-  }
-
-  // Add stderr indicator for non-zero exit codes
-  if (result.exitCode !== 0) {
-    output['<stderr>'] = `Exit code: ${result.exitCode}`
-  }
+  console.log('[worker] tsgoTranspile result:', {
+    outputLength: result.outputText?.length,
+    hasSourceMap: !!result.sourceMapText,
+    error: result.error,
+    time: `${time.toFixed(1)}ms`,
+  })
 
   return {
-    output,
+    outputText: result.outputText,
+    sourceMapText: result.sourceMapText,
+    error: result.error,
     time,
   }
 }
