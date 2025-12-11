@@ -1,3 +1,4 @@
 [submodule "typescript-go"]
 	path = typescript-go
-	url = https://github.com/Microsoft/typescript-go.git
+	url = https://github.com/rictic/typescript-go.git
+	branch = hacky-wasm-entrypoint
