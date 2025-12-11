@@ -216,8 +216,6 @@ let initPromise: Promise<void> | undefined
 // Extend globalThis to include tsgoCompile, tsgoTranspile and tsgoReady
 declare global {
   // eslint-disable-next-line no-var
-  var tsgoCompile: ((input: TsgoCompileInput) => TsgoCompileResult) | undefined
-  // eslint-disable-next-line no-var
   var tsgoTranspile:
     | ((input: TsgoTranspileInput) => TsgoTranspileResult)
     | undefined
@@ -225,29 +223,9 @@ declare global {
   var tsgoReady: boolean | undefined
 }
 
-interface TsgoCompileInput {
-  files: Record<string, string>
-  args?: string[]
-}
-
-interface TsgoCompileResult {
-  exitCode: number
-  stdout: string
-  files: Record<string, string>
-}
-
 interface TsgoTranspileInput {
   code: string
   fileName?: string
-  compilerOptions?: {
-    target?: string
-    module?: string
-    jsx?: string
-    sourceMap?: boolean
-    inlineSourceMap?: boolean
-    inlineSources?: boolean
-    removeComments?: boolean
-  }
 }
 
 interface TsgoTranspileResult {
@@ -259,7 +237,6 @@ interface TsgoTranspileResult {
 const workerFunctions = {
   init,
   compile,
-  transpile,
 }
 export type WorkerFunctions = typeof workerFunctions
 createBirpc<{}, WorkerFunctions>(workerFunctions, {
@@ -342,10 +319,7 @@ function waitForTsgoReady(): Promise<void> {
   })
 }
 
-async function compile(
-  cmd: string,
-  files: Record<string, string>,
-): Promise<CompileResult> {
+async function compile(files: Record<string, string>): Promise<CompileResult> {
   await initWasm()
 
   if (!globalThis.tsgoTranspile) {
@@ -371,17 +345,13 @@ async function compile(
       continue
     }
 
-    console.log(`[worker] Transpiling ${fileName} (fast mode, no type checking)`)
+    console.log(
+      `[worker] Transpiling ${fileName} (fast mode, no type checking)`,
+    )
 
     const result = globalThis.tsgoTranspile({
       code,
       fileName,
-      compilerOptions: {
-        target: 'ESNext',
-        module: 'ESNext',
-        // Parse jsx from command if present
-        jsx: cmd.includes('react') ? 'react-jsx' : undefined,
-      },
     })
 
     // Determine output filename
@@ -402,57 +372,12 @@ async function compile(
   }
 
   const time = performance.now() - t
-  console.log(`[worker] Transpiled ${Object.keys(files).length} files in ${time.toFixed(1)}ms`)
+  console.log(
+    `[worker] Transpiled ${Object.keys(files).length} files in ${time.toFixed(1)}ms`,
+  )
 
   return {
     output,
-    time,
-  }
-}
-
-/**
- * Fast transpile-only mode: parse + emit, no type checking.
- * This is significantly faster for playground environments where
- * you just want to see the JS output without full type checking.
- */
-async function transpile(
-  code: string,
-  options?: TsgoTranspileInput['compilerOptions'],
-): Promise<TranspileResult> {
-  await initWasm()
-
-  if (!globalThis.tsgoTranspile) {
-    throw new Error(
-      'tsgoTranspile not available - WASM not properly initialized',
-    )
-  }
-
-  const t = performance.now()
-
-  console.log(
-    '[worker] Calling tsgoTranspile (fast mode, no type checking)',
-    options,
-  )
-
-  // Call the fast transpile function
-  const result = globalThis.tsgoTranspile({
-    code,
-    compilerOptions: options,
-  })
-
-  const time = performance.now() - t
-
-  console.log('[worker] tsgoTranspile result:', {
-    outputLength: result.outputText?.length,
-    hasSourceMap: !!result.sourceMapText,
-    error: result.error,
-    time: `${time.toFixed(1)}ms`,
-  })
-
-  return {
-    outputText: result.outputText,
-    sourceMapText: result.sourceMapText,
-    error: result.error,
     time,
   }
 }

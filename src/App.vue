@@ -73,7 +73,7 @@ async function compile() {
     }
   }, 300)
 
-  const result = await rpc.compile('', Object.fromEntries(filesToObject()))
+  const result = await rpc.compile(Object.fromEntries(filesToObject()))
 
   compiling.value = false
   showCompilingUI.value = false
